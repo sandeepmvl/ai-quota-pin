@@ -1,0 +1,14 @@
+node_modules/
+src-tauri/target/
+src-tauri/gen/
+.DS_Store
+.env
+.env.*
+*.log
+/cache/
+.cache/
+# app data (never commit): prefs.json, claude-usage.json
+ai-quota-pin/
+Application Support/
+*.bundle
+dist/
