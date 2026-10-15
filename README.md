@@ -86,7 +86,7 @@ cp -R "src-tauri/target/release/bundle/macos/AI Quota Pin.app" /Applications/
 cp packaging/macos/io.github.sandeepmvl.aiquotapin.plist ~/Library/LaunchAgents/
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/io.github.sandeepmvl.aiquotapin.plist
 ```
-Downloaded builds are unsigned. The first time, right-click the app and choose Open, or run `xattr -dr com.apple.quarantine "/Applications/AI Quota Pin.app"`.
+Downloaded builds are not signed or notarized, so **Gatekeeper** may say the app "is damaged" or "can't be opened". Either right-click the app → **Open** → **Open** (on macOS 15+: System Settings → Privacy & Security → **Open Anyway**), or run `xattr -dr com.apple.quarantine "/Applications/AI Quota Pin.app"`.
 
 ### Windows (PowerShell)
 ```powershell
@@ -97,7 +97,8 @@ git clone https://github.com/sandeepmvl/ai-quota-pin; cd ai-quota-pin
 npm install; npm run build
 # install: src-tauri\target\release\bundle\msi\*.msi  (or nsis\*-setup.exe)
 ```
-To start at login, press `Win+R`, open `shell:startup` and add a shortcut to *AI Quota Pin*.
+Builds are not code-signed yet, so Windows **SmartScreen** may say *"Windows protected your PC"*. Click **More info → Run anyway**.
+If your browser blocks the download, choose *Keep*. To start at login, press `Win+R`, open `shell:startup` and add a shortcut to *AI Quota Pin*.
 
 ### Linux (Debian/Ubuntu; use the equivalent packages on other distros)
 ```bash
