@@ -21,9 +21,10 @@ function render() {
       return `<div class="w"><span class="lbl">${esc(w.label)}</span>${w.used == null ? `<span class="det">${esc(w.detail)}</span>` : `<span class="bar ${cls}"><i style="width:${Math.min(p, 100)}%"></i></span><span class="pct">${p}%</span>`}<span class="rs">${w.resets_at ? `↻${left(w.resets_at)} · ${at(w.resets_at)}` : ''}</span></div>`;
     }).join('');
     const sum = u.windows.map((w) => w.used == null ? `${esc(w.label)} ${esc(w.detail)}` : `${esc(w.label)} ${Math.round(w.used)}%`).join(' · ');
+    const plan = u.plan ? ` <span class="plan">${esc(u.plan)}${u.renews_at ? ` · renews ${new Date(u.renews_at * 1000).toLocaleDateString([], { month: 'short', day: 'numeric' })}` : ''}</span>` : '';
     const note = u.note ? ` <span class="note">${esc(u.note)}</span>` : '';
     const hint = u.status === 'signin' ? `<div class="hint">${esc(u.hint).replace(/`([^`]+)`/g, '<code>$1</code>')} <button class="x" data-hide="${esc(u.id)}" title="Hide this provider">hide</button></div>` : '';
-    return `<div class="p ${u.status === 'na' || u.status === 'signin' ? 'na' : ''}" data-tauri-drag-region><span class="pn">${esc(u.name)}</span> ${u.windows.length ? `<span class="sum">${sum}</span>` : ''}${u.status === 'na' || u.status === 'signin' || !compact ? note : ''}${hint}${ws}</div>`;
+    return `<div class="p ${u.status === 'na' || u.status === 'signin' ? 'na' : ''}" data-tauri-drag-region><span class="pn">${esc(u.name)}</span>${plan} ${u.windows.length ? `<span class="sum">${sum}</span>` : ''}${u.status === 'na' || u.status === 'signin' || !compact ? note : ''}${hint}${ws}</div>`;
   }).join('') || '<div class="na">No AI tools detected</div>';
   if (html === last && compact === lastC && !document.body.classList.contains('collapsed')) return; // nothing changed: skip DOM + resize
   last = html; lastC = compact; $('rows').innerHTML = html;

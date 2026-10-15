@@ -11,3 +11,4 @@ button{background:none;border:0;color:inherit;font:inherit;cursor:pointer;opacit
 body.collapsed #note{display:none}body.collapsed #pin{display:block}
 .compact .w{display:none}.compact .sum{display:inline}.sum{display:none}
 .det{width:104px;opacity:.85}
+.plan{font-size:10px;opacity:.75;border:1px solid rgba(255,255,255,.25);border-radius:4px;padding:0 3px;margin-left:2px}

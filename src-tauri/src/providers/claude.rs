@@ -33,11 +33,68 @@ fn read_token() -> Option<String> {
     None
 }
 
+/// Usage windows. Prefers the generic `limits` list, which names model-specific weekly
+/// allowances (e.g. `kind: weekly_scoped, scope.model.display_name: "Fable"`), so new models
+/// appear automatically. Falls back to the older `five_hour` / `seven_day*` objects.
 fn parse(b: &Value) -> Vec<Window> {
-    [("five_hour", "5h"), ("seven_day", "Week"), ("seven_day_opus", "Opus wk"), ("seven_day_sonnet", "Sonnet wk")]
-        .iter().filter(|(k, _)| b[*k].is_object())
-        .map(|(k, l)| Window { label: l.to_string(), used: num(&b[*k]["utilization"]), resets_at: ts(&b[*k]["resets_at"]), detail: None })
-        .collect()
+    let mut out = Vec::new();
+    for l in b["limits"].as_array().into_iter().flatten() {
+        let scope = l["scope"]["model"]["display_name"].as_str().or(l["scope"]["surface"].as_str());
+        let label = match (l["kind"].as_str().unwrap_or(""), scope) {
+            ("session", _) => "5h".to_string(),
+            ("weekly_all", _) => "Week".to_string(),
+            (k, Some(m)) if k.starts_with("weekly") => format!("{m} wk"),
+            (k, Some(m)) => format!("{m} {k}"),
+            (k, None) => k.replace('_', " "),
+        };
+        out.push(Window { label, used: num(&l["percent"]), resets_at: ts(&l["resets_at"]), detail: None });
+    }
+    if out.is_empty() {
+        let mut keys: Vec<_> = b.as_object().into_iter().flatten()
+            .filter(|(k, v)| (k.as_str() == "five_hour" || k.starts_with("seven_day")) && v["utilization"].is_number()).collect();
+        keys.sort_by_key(|(k, _)| (k.as_str() != "five_hour", k.as_str() != "seven_day", k.to_string()));
+        for (k, v) in keys {
+            let label = match k.as_str() { "five_hour" => "5h".into(), "seven_day" => "Week".into(),
+                k => format!("{} wk", { let m = k.trim_start_matches("seven_day_"); let mut c = m.chars(); c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default() }) };
+            out.push(Window { label, used: num(&v["utilization"]), resets_at: ts(&v["resets_at"]), detail: None });
+        }
+    }
+    out
+}
+
+fn plan_name(org_type: &str, tier: &str) -> Option<String> {
+    let t = tier.to_lowercase();
+    Some(if t.contains("max_20x") { "Max 20x" } else if t.contains("max_5x") { "Max 5x" }
+        else if org_type.contains("max") || t == "max" { "Max" } else if org_type.contains("pro") || t == "pro" { "Pro" }
+        else if org_type.contains("team") || t == "team" { "Team" } else if org_type.contains("enterprise") || t == "enterprise" { "Enterprise" }
+        else { return None }.to_string())
+}
+fn profile_path() -> PathBuf { dirs::config_dir().unwrap_or_default().join("ai-quota-pin/claude-plan.json") }
+const PROFILE_EVERY: i64 = 6 * 3600;
+
+/// Plan via /api/oauth/profile (what Claude Code uses), at most every 6 h, cached on disk.
+/// Only the plan label is stored — never name, email or ids. The profile has no renewal date.
+fn plan(token: &str) -> Option<String> {
+    let cached = read_json(&profile_path());
+    if let Some(c) = &cached { if now() - c["at"].as_i64().unwrap_or(0) < PROFILE_EVERY { return c["plan"].as_str().map(String::from); } }
+    let fresh = get_json(agent().get("https://api.anthropic.com/api/oauth/profile")
+        .set("Authorization", &format!("Bearer {token}")).set("anthropic-beta", "oauth-2025-04-20")).ok()
+        .and_then(|p| plan_name(p["organization"]["organization_type"].as_str().unwrap_or(""), p["organization"]["rate_limit_tier"].as_str().unwrap_or("")));
+    // Fall back to what Claude Code stored with its credentials.
+    let fresh = fresh.or_else(|| cached.as_ref().and_then(|c| c["plan"].as_str().map(String::from))).or_else(local_plan);
+    let _ = std::fs::create_dir_all(profile_path().parent().unwrap());
+    let _ = std::fs::write(profile_path(), serde_json::to_vec(&serde_json::json!({ "at": now(), "plan": fresh })).unwrap());
+    fresh
+}
+fn local_plan() -> Option<String> {
+    let c = read_json(&dir().join(".credentials.json")).or_else(|| {
+        #[cfg(target_os = "macos")]
+        { let o = std::process::Command::new("/usr/bin/security").args(["find-generic-password", "-s", "Claude Code-credentials", "-w"]).output().ok()?;
+          return serde_json::from_slice(&o.stdout).ok(); }
+        #[allow(unreachable_code)] None
+    })?;
+    let o = &c["claudeAiOauth"];
+    plan_name(o["subscriptionType"].as_str().unwrap_or(""), o["rateLimitTier"].as_str().unwrap_or(""))
 }
 
 /// Rough local fallback: tokens Claude Code logged in the last 5 hours (ccusage-style JSONL scan,
@@ -94,7 +151,8 @@ impl Provider for Claude {
             if let Some(c) = read_json(&cache_path()) {
                 let at = c["at"].as_i64().unwrap_or(0);
                 let w = parse(&c["body"]);
-                if !w.is_empty() { let mut u = Usage::ok(self, w, None); u.updated_at = at; st.last = Some(u); }
+                if !w.is_empty() { let mut u = Usage::ok(self, w, None); u.updated_at = at;
+                    u.plan = read_json(&profile_path()).and_then(|c| c["plan"].as_str().map(String::from)).or_else(local_plan); st.last = Some(u); }
                 if now() - at < MIN_GAP { st.next_at = at + MIN_GAP; }
             }
         }
@@ -113,7 +171,8 @@ impl Provider for Claude {
                     st.backoff = 0;
                     let _ = std::fs::create_dir_all(cache_path().parent().unwrap());
                     let _ = std::fs::write(cache_path(), serde_json::to_vec(&serde_json::json!({ "at": now(), "body": b })).unwrap());
-                    let u = Usage::ok(self, parse(&b), None);
+                    let mut u = Usage::ok(self, parse(&b), None);
+                    u.plan = plan(&t);
                     st.last = Some(u.clone());
                     return u;
                 }

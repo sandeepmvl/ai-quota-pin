@@ -20,6 +20,7 @@ Runs on **macOS, Windows and Linux**. The app is about 5 MB, uses about 25 MB of
 |---|---|---|
 | <img src="docs/expanded.png" width="300"> | <img src="docs/compact.png" width="300"> | <img src="docs/collapsed.png" width="100"> |
 
+- **Plan badge**: next to each provider name, e.g. `Max 20x` or `Plus · renews Oct 27`. Shown only when the provider reports it; dates are never guessed.
 - **Expanded**: one row per usage window, with a bar (green, then yellow at 70%, red at 90%), % used, time until reset and the local reset time.
 - **Compact** (the `▤` button or the tray): one line per provider.
 - **Collapsed** (the `–` button): the panel shrinks to a small **AI pin**. Click the pin to expand it again. Drag it to move it.
@@ -38,9 +39,9 @@ Runs on **macOS, Windows and Linux**. The app is about 5 MB, uses about 25 MB of
 ## Supported providers
 | Provider | What it needs | Shows | Data source |
 |---|---|---|---|
-| Claude Code | Signed in with `claude` (Pro/Max) | 5h + weekly % (+ Opus/Sonnet weekly when present), resets | macOS Keychain `Claude Code-credentials`, or `~/.claude/.credentials.json` (`CLAUDE_CONFIG_DIR`). Calls Anthropic's OAuth usage endpoint. If that fails, estimates from `~/.claude/projects/**/*.jsonl` |
-| Codex | Signed in with `codex login` (ChatGPT plan) | 5h / weekly %, resets, plan | Newest `~/.codex/sessions/**/*.jsonl` `rate_limits` (no network needed). Falls back to `~/.codex/auth.json` and ChatGPT's usage endpoint (`CODEX_HOME`) |
-| Grok | Signed in with `grok login` | Weekly credit %, reset, use per product | `~/.grok/auth.json` (`GROK_HOME`) and the Grok CLI billing endpoint |
+| Claude Code | Signed in with `claude` (Pro/Max/Team) | 5h + weekly %, **every model-specific weekly limit** (e.g. *Fable wk*, from the `limits` list's `weekly_scoped` entries; new models appear automatically), resets. **Plan** (Pro / Max 5x / Max 20x / Team) from `/api/oauth/profile`, checked at most every 6 h and cached. No renewal date: Anthropic doesn't expose one | macOS Keychain `Claude Code-credentials`, or `~/.claude/.credentials.json` (`CLAUDE_CONFIG_DIR`). Calls Anthropic's OAuth usage and profile endpoints. If they fail, estimates from `~/.claude/projects/**/*.jsonl` |
+| Codex | Signed in with `codex login` (ChatGPT plan) | 5h / weekly %, resets. **Plan** and **renewal date** from the `chatgpt_plan_type` / `chatgpt_subscription_active_until` claims in Codex's stored sign-in token (no network; the date is shown only while it is still in the future) | Newest `~/.codex/sessions/**/*.jsonl` `rate_limits` (no network needed). Falls back to `~/.codex/auth.json` and ChatGPT's usage endpoint (`CODEX_HOME`) |
+| Grok | Signed in with `grok login` | Weekly credit %, reset, use per product. Plan name not available from the CLI billing endpoint | `~/.grok/auth.json` (`GROK_HOME`) and the Grok CLI billing endpoint |
 | Cursor | Cursor app signed in | Monthly plan %, end of billing cycle | Cursor's `state.vscdb`, opened read-only, and Cursor's usage-summary endpoint |
 | Gemini CLI | `gemini` signed in with Google | Sign-in status only (no public quota API yet) | `~/.gemini/oauth_creds.json` |
 

@@ -33,11 +33,15 @@ pub struct Usage {
     /// One-line fix for "signin", e.g. "Run `claude` and log in".
     pub hint: Option<String>,
     pub updated_at: i64,
+    /// Plan name as reported by the provider (e.g. "Max 20x", "Plus"). Never inferred.
+    pub plan: Option<String>,
+    /// Next renewal/billing date (unix s) only when the provider states one; never computed.
+    pub renews_at: Option<i64>,
 }
 
 impl Usage {
     pub fn ok(p: &dyn Provider, windows: Vec<Window>, note: Option<String>) -> Self {
-        Usage { id: p.id().into(), name: p.name().into(), windows, note, status: "ok".into(), updated_at: now(), hint: None }
+        Usage { id: p.id().into(), name: p.name().into(), windows, note, status: "ok".into(), updated_at: now(), ..Default::default() }
     }
     /// Login missing or expired. The app never asks for passwords; the user fixes it in the provider's own CLI.
     pub fn signin(p: &dyn Provider) -> Self {
@@ -91,10 +95,10 @@ pub fn get_json(req: ureq::Request) -> Result<Value, String> {
 /// Fake data for screenshots and UI work: run with `AIQP_DEMO=1`. Makes no file or network access.
 pub fn demo() -> Vec<Usage> {
     let w = |l: &str, u: f64, h: i64| Window { label: l.into(), used: Some(u), resets_at: Some(now() + h * 3600), detail: None };
-    let ok = |id: &str, name: &str, ws, note: Option<&str>| Usage { id: id.into(), name: name.into(), windows: ws, note: note.map(Into::into), status: "ok".into(), updated_at: now(), hint: None };
+    let ok = |id: &str, name: &str, ws, note: Option<&str>| Usage { id: id.into(), name: name.into(), windows: ws, note: note.map(Into::into), status: "ok".into(), updated_at: now(), ..Default::default() };
     vec![
-        ok("claude", "Claude", vec![w("5h", 62.0, 2), w("Week", 38.0, 100)], None),
-        ok("codex", "Codex", vec![w("5h", 21.0, 4), w("Week", 74.0, 60)], Some("plus")),
+        Usage { plan: Some("Max 5x".into()), ..ok("claude", "Claude", vec![w("5h", 62.0, 2), w("Week", 38.0, 100), w("Fable wk", 47.0, 100)], None) },
+        Usage { plan: Some("Plus".into()), renews_at: Some(now() + 12 * 86400), ..ok("codex", "Codex", vec![w("5h", 21.0, 4), w("Week", 74.0, 60)], None) },
         ok("grok", "Grok", vec![w("Week", 93.0, 30)], None),
         Usage { id: "gemini".into(), name: "Gemini".into(), note: Some("Not signed in".into()), hint: Some("Run `gemini` and choose Login with Google".into()), status: "signin".into(), updated_at: now(), ..Default::default() },
     ]

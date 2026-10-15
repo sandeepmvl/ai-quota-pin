@@ -50,6 +50,26 @@ fn local() -> Option<(Vec<Window>, Option<String>, i64)> {
     None
 }
 
+fn pretty_plan(p: &str) -> String {
+    match p { "prolite" => "Pro Lite".into(), "plus" => "Plus".into(), "pro" => "Pro".into(), "team" => "Team".into(),
+        "business" => "Business".into(), "enterprise" => "Enterprise".into(), "edu" => "Edu".into(), "free" => "Free".into(), o => o.to_string() }
+}
+
+/// Plan + renewal from the id_token claims Codex already stores (no network). The renewal date is
+/// `chatgpt_subscription_active_until`; it is only shown while it is still in the future.
+fn account() -> (Option<String>, Option<i64>) {
+    use base64::Engine;
+    let claims = read_json(&home_dir().join("auth.json")).and_then(|a| {
+        let p = a["tokens"]["id_token"].as_str()?.split('.').nth(1)?.to_string();
+        let b = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(p.trim_end_matches('=')).ok()?;
+        serde_json::from_slice::<Value>(&b).ok()
+    });
+    let c = claims.as_ref().map(|c| &c["https://api.openai.com/auth"]);
+    let plan = c.and_then(|c| c["chatgpt_plan_type"].as_str()).map(pretty_plan);
+    let until = c.and_then(|c| ts(&c["chatgpt_subscription_active_until"])).filter(|t| *t > now());
+    (plan, until)
+}
+
 impl Provider for Codex {
     fn id(&self) -> &'static str { "codex" }
     fn name(&self) -> &'static str { "Codex" }
@@ -57,6 +77,17 @@ impl Provider for Codex {
     fn hint(&self) -> &'static str { "Run `codex login`" }
     fn detect(&self) -> bool { home_dir().exists() }
     fn fetch(&self) -> Usage {
+        let mut u = self.fetch_usage();
+        let (plan, until) = account();
+        u.plan = plan.or_else(|| u.note.take().map(|n| pretty_plan(n.split(' ').next().unwrap_or(&n))));
+        if u.note.as_deref().map_or(false, |n| !n.contains("last session")) { u.note = None; }
+        u.renews_at = until;
+        u
+    }
+}
+
+impl Codex {
+    fn fetch_usage(&self) -> Usage {
         let loc = local();
         // Fresh local data (< 30 min old) costs no network at all.
         if let Some((w, plan, m)) = &loc { if now() - m < 1800 { return Usage::ok(self, w.clone(), plan.clone()); } }
